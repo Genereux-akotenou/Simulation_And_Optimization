@@ -1,0 +1,310 @@
+\documentclass{article}
+\usepackage[letterpaper, margin=1in, headheight=500cm]{geometry}
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\title{TP3 MongoDB - QFM3/UM6P}
+\author{AKOTENOU Généreux Mahouzonssou}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\subsection*{I) Requêtes sur des tableaux - Lecture}
+
+\begin{enumerate}
+
+\item Combien d'utilisateurs ont noté le film avec l'identifiant 1196 (Star Wars: Episode V - The Empire Strikes Back (1980)) ?
+\begin{lstlisting}[language=JavaScript]
+> db.users.find({"movies.movieid": 1196}).count()
+// 2990
+\end{lstlisting}
+
+\item Combien d'utilisateurs ont noté tous les films de la première trilogie Star Wars (id 260, 1196, 1210) ?
+\begin{lstlisting}[language=JavaScript]
+> db.users.find({"movies.movieid": { $all: [260, 1196, 1210]} }).count()
+// 1926
+\end{lstlisting}
+
+\item Combien d'utilisateurs ont noté exactement 48 films ?
+\begin{lstlisting}[language=JavaScript]
+> db.users.find({"movies": { $size: 48 }}).count()
+// 51
+\end{lstlisting}
+
+\item Pour chaque utilisateur, créer un champ \texttt{num\_ratings} qui indique le nombre de films qu'il a notés.
+\begin{lstlisting}[language=JavaScript]
+> db.users.updateMany({}, [{$set: {"num_ratings": {$size: "$movies"}}}])
+\end{lstlisting}
+
+\item Combien d'utilisateurs ont noté plus de 90 films ?
+\begin{lstlisting}[language=JavaScript]
+> db.users.find({"num_ratings": {$gt: 90} }).count()
+// 3114
+\end{lstlisting}
+
+\item Combien de notes ont été soumises après le 1er janvier 2001 ?
+\begin{lstlisting}[language=JavaScript]
+> db.users.aggregate([
+    { $unwind: "$movies" }, 
+    { 
+        $match: {
+            "movies.timestamp": {
+                $gt: Math.round(new Date("2001-01-01").getTime() / 1000)
+            } 
+        } 
+    }, 
+    { $count: "count" }
+])
+// {
+//   count: 95453
+// }
+\end{lstlisting}
+
+\item Quels sont les trois derniers films notés par Jayson Brad ?
+\begin{lstlisting}[language=JavaScript]
+> db.users.aggregate([
+    { $match: { "name": "Jayson Brad" } },
+    { $unwind: "$movies" },
+    { $sort: { "movies.timestamp": -1 } },
+    { $limit: 3 },
+    { 
+        $project: { 
+            _id: 0, 
+            "movieid": "$movies.movieid", 
+            "rating": "$movies.rating", 
+            "timestamp": "$movies.timestamp" 
+        }
+    }
+])
+// {
+//     movieid: 3639,
+//     rating: 2,
+//     timestamp: 995664224
+// }
+// {
+//     movieid: 2347,
+//     rating: 3,
+//     timestamp: 995664198
+// }
+// {
+//     movieid: 3635,
+//     rating: 3,
+//     timestamp: 995664198
+// }
+\end{lstlisting}
+
+\item Obtenez les informations portant uniquement sur Tracy Edward et sa note du film Star Wars: Episode VI - Return of the Jedi, qui a pour id 1210.
+\begin{lstlisting}[language=JavaScript]
+> db.users.aggregate([
+    {
+        $unwind: "$movies"
+    },
+    {
+        $match: {
+            "name": "Tracy Edward", 
+            "movies.movieid": 1210
+        }
+    },
+    {
+        $project: {
+            "movies.movieid": 0,
+            "movies.timestamp": 0,
+        }
+    }
+])
+// {
+//     _id: 5951,
+//     name: 'Tracy Edward',
+//     gender: 'M',
+//     age: 24,
+//     occupation: 'college/grad student',
+//     movies: {
+//       rating: 5
+//     },
+//     num_ratings: 53
+// }
+\end{lstlisting}
+
+\item Combien d'utilisateurs ont donné au film "Untouchables, The" la note de 5.
+\begin{lstlisting}[language=JavaScript]
+> db.users.aggregate([
+    {
+        $unwind: "$movies"
+    },
+    {
+        $match: {
+            "movies.rating": 5
+        }
+    },
+    {
+        $lookup: {
+            from: "movies",
+            localField: "movies.movieid",
+            foreignField: "_id",
+            as: "movieDetails"
+        }
+    },
+    {
+        $unwind: "$movieDetails"
+    },
+    {
+        $match: {
+            "movieDetails.title": "Untouchables, The (1987)"
+        }
+    },
+    {
+        $count: "number_count"
+    }
+])
+// {
+//     number_count: 317
+// }
+\end{lstlisting}
+
+\end{enumerate}
+
+\subsection*{II) Requêtes sur des tableaux - Écriture}
+
+\begin{enumerate}
+
+\item L'utilisateur Barry Erin vient juste de voir le film Nixon, qui a pour id 14 ; il lui attribue la note de 4. Mettre à jour la base de données pour prendre en compte cette note. N'oubliez pas que le champ num\_ratings doit représenter le nombre de films notés par un utilisateur.
+\begin{lstlisting}[language=JavaScript]
+> db.users.updateOne(
+    {
+        name: "Barry Erin"
+    }, 
+    {
+        $inc: {
+            "num_ratings": 1
+        },
+        $push: {
+            "movies": {
+                "movieid": 14,
+                "rating": 4,
+                "timestamp": Math.round(new Date().getTime() / 1000)
+            }
+        }
+    }
+)
+// {
+//     acknowledged: true,
+//     insertedId: null,
+//     matchedCount: 1,
+//     modifiedCount: 1,
+//     upsertedCount: 0
+// }
+\end{lstlisting}
+
+\item L'utilisatrice Marquis Billie n'a en fait pas vu le film "Santa with Muscles", qui a pour id 1311. Supprimer la note entrée par mégarde dans la base de données.
+\begin{lstlisting}[language=JavaScript]
+> db.users.updateOne(
+    {
+        "name": "Marquis Billie"
+    },
+    {
+        $inc: {
+            "num_ratings": -1
+        },
+        $pull: {
+            "movies": {
+                "movieid": 1311
+            }
+        }
+    }
+)
+// {
+//     acknowledged: true,
+//     insertedId: null,
+//     matchedCount: 1,
+//     modifiedCount: 1,
+//     upsertedCount: 0
+// }
+\end{lstlisting}
+
+\item Les genres du film "Cinderella" devraient être Animation, Children's et Musical. Modifier en une seule requête le document correspondant pour qu'il contienne ces trois genres sans doublon.
+\begin{lstlisting}[language=JavaScript]
+> db.movies.updateOne(
+    {
+        title: "Cinderella (1950)"
+    },
+    {
+        $set: {
+            "genres": "Animation|Children's|Musical"
+        }
+    }
+)
+\end{lstlisting}
+
+\end{enumerate}
+
+\subsection*{III) Références}
+
+\begin{enumerate}
+\item Modifier la collection users en y ajoutant un champ \texttt{movies.movieref} qui contient une DBRef vers le film concerné.
+\begin{lstlisting}[language=JavaScript]
+// Ajoutez ici la requête MongoDB correspondante
+\end{lstlisting}
+
+\item En exploitant le champ nouvellement créé, déterminer combien d'utilisateurs ont noté le film Taxi Driver.
+\begin{lstlisting}[language=JavaScript]
+// Ajoutez ici la requête MongoDB correspondante
+\end{lstlisting}
+
+\end{enumerate}
+
+\subsection*{IV) Agrégats}
+
+\begin{enumerate}
+
+\item Montrer combien de films ont été produits durant chaque année des années 90 ; ordonner les résultats de l'année la plus à la moins fructueuse.
+\begin{lstlisting}[language=JavaScript]
+// Ajoutez ici la requête MongoDB correspondante
+\end{lstlisting}
+
+\item Quelle est la note moyenne du film Pulp Fiction, qui a pour id 296 ?
+\begin{lstlisting}[language=JavaScript]
+// Ajoutez ici la requête MongoDB correspondante
+\end{lstlisting}
+
+\item En une seule requête, retourner pour chaque utilisateur son id, son nom, les notes maximale, minimale et moyenne qu'il a données, et ordonner le résultat par note moyenne croissante.
+\begin{lstlisting}[language=JavaScript]
+// Ajoutez ici la requête MongoDB correspondante
+\end{lstlisting}
+
+\item Quel est le mois au cours duquel le plus de notes ont été attribuées ?
+\begin{lstlisting}[language=JavaScript]
+// Ajoutez ici la requête MongoDB correspondante
+\end{lstlisting}
+
+\end{enumerate}
+
+\end{document}

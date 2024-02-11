@@ -1,6 +1,16 @@
 import numpy as np
 
 def gauss_pivot_v2(A: list = [], b: list = []):
+    """
+    Solves a linear system of equations using Gauss elimination. We manager case where pivot is null here.
+
+    Args:
+    A (numpy.ndarray): Coefficient matrix.
+    b (numpy.ndarray): Right-hand side vector.
+
+    Returns:
+    x (numpy.ndarray): Solution vector.
+    """
     n = len(b)
     x = np.zeros(n)
 
